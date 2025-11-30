@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "avalon-stdlib"
+version = "0.1"
+description = "Python Standard Library(PyStdlib)"
+authors = [
+    { name = "RandomX" }
+]
+license = { text = "MIT" }
+readme = "DUPEREAD.md"
+requires-python = ">=3.10"
+dependencies = ["colorama>=0.4.6"]
+
+[project.urls]
+Homepage = "https://github.com/RandomX42069/Python-Stdlib"
