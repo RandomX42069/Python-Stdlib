@@ -1,62 +1,273 @@
-bit8IntLimit = 255
-bit16UsignedIntLimit = 32767
-bit16SignedIntLimit = 65535
-bit32IntLimit = 2147483647
-bit64IntLimit = 9223372036854775807
 
-import datetime
 import os
 import sys
+import shutil
 import pathlib
+import datetime
+import re
+from typing import List
+
+try:
+    import colorama
+    colorama.init()
+except ImportError:
+    colorama = None
+
+BIT8_SIGNED_MAX = 127
+BIT8_UNSIGNED_MAX = 255
+BIT16_SIGNED_MAX = 32767
+BIT16_UNSIGNED_MAX = 65535
+BIT32_SIGNED_MAX = 2147483647
+BIT32_UNSIGNED_MAX = 4294967295
+BIT64_SIGNED_MAX = 9223372036854775807
+BIT64_UNSIGNED_MAX = 18446744073709551615
+
+if colorama:
+    FBLACK   = colorama.Fore.BLACK
+    FRED     = colorama.Fore.RED
+    FGREEN   = colorama.Fore.GREEN
+    FYELLOW  = colorama.Fore.YELLOW
+    FBLUE    = colorama.Fore.BLUE
+    FMAGENTA = colorama.Fore.MAGENTA
+    FCYAN    = colorama.Fore.CYAN
+    FWHITE   = colorama.Fore.WHITE
+    FRESET   = colorama.Fore.RESET
+
+    FBRIGHTBLACK   = colorama.Fore.LIGHTBLACK_EX
+    FBRIGHTRED     = colorama.Fore.LIGHTRED_EX
+    FBRIGHTGREEN   = colorama.Fore.LIGHTGREEN_EX
+    FBRIGHTYELLOW  = colorama.Fore.LIGHTYELLOW_EX
+    FBRIGHTBLUE    = colorama.Fore.LIGHTBLUE_EX
+    FBRIGHTMAGENTA = colorama.Fore.LIGHTMAGENTA_EX
+    FBRIGHTCYAN    = colorama.Fore.LIGHTCYAN_EX
+    FBRIGHTWHITE   = colorama.Fore.LIGHTWHITE_EX
+
+    BBLACK   = colorama.Back.BLACK
+    BRED     = colorama.Back.RED
+    BGREEN   = colorama.Back.GREEN
+    BYELLOW  = colorama.Back.YELLOW
+    BBLUE    = colorama.Back.BLUE
+    BMAGENTA = colorama.Back.MAGENTA
+    BCYAN    = colorama.Back.CYAN
+    BWHITE   = colorama.Back.WHITE
+    BRESET   = colorama.Back.RESET
+
+    BBRIGHTBLACK   = colorama.Back.LIGHTBLACK_EX
+    BBRIGHTRED     = colorama.Back.LIGHTRED_EX
+    BBRIGHTGREEN   = colorama.Back.LIGHTGREEN_EX
+    BBRIGHTYELLOW  = colorama.Back.LIGHTYELLOW_EX
+    BBRIGHTBLUE    = colorama.Back.LIGHTBLUE_EX
+    BBRIGHTMAGENTA = colorama.Back.LIGHTMAGENTA_EX
+    BBRIGHTCYAN    = colorama.Back.LIGHTCYAN_EX
+    BBRIGHTWHITE   = colorama.Back.LIGHTWHITE_EX
+
+    STYLEBRIGHT = colorama.Style.BRIGHT
+    STYLEDIM    = colorama.Style.DIM
+    STYLERESET  = colorama.Style.RESET_ALL
+else:
+    FBLACK = FRED = FGREEN = FYELLOW = FBLUE = FMAGENTA = FCYAN = FWHITE = FRESET = ""
+    FBRIGHTBLACK = FBRIGHTRED = FBRIGHTGREEN = FBRIGHTYELLOW = FBRIGHTBLUE = FBRIGHTMAGENTA = FBRIGHTCYAN = FBRIGHTWHITE = ""
+    BBLACK = BRED = BGREEN = BYELLOW = BBLUE = BMAGENTA = BCYAN = BWHITE = BRESET = ""
+    BBRIGHTBLACK = BBRIGHTRED = BBRIGHTGREEN = BBRIGHTYELLOW = BBRIGHTBLUE = BBRIGHTMAGENTA = BBRIGHTCYAN = BBRIGHTWHITE = ""
+    STYLEBRIGHT = STYLEDIM = STYLERESET = ""
+
+class AGC_GLOBAL:
+    def err(self, msg: str, raiseException: bool = True):
+        text = f"{FRED}[ FATAL ]: [ GLOBAL ]: {msg}{FRESET}"
+        if raiseException:
+            raise RuntimeError(text)
+        print(text)
+        sys.exit(1)
+
+    def ok(self, msg: str):
+        print(f"{FGREEN}[ OK ]: {msg}{FRESET}")
+
+_global_err = AGC_GLOBAL()
+
+def get_flag_value(lst: list, flag: str):
+    if flag not in lst:
+        return None
+    idx = lst.index(flag)
+    if idx + 1 >= len(lst):
+        _global_err.err(f"Flag '{flag}' requires a value.")
+        return None
+    return lst[idx + 1]
+
+def clear_empty_gap(lst: list):
+    return [x for x in lst if x]
+
+def cmpList(lst1: list, lst2: list) -> bool:
+    if not lst1 or not lst2:
+        return True
+    return len(lst1) == len(lst2)
+
+def cmpLLen(lst1: list, lst2: list) -> bool:
+    return len(lst1) == len(lst2)
+
+def ulen(lst: list) -> int:
+    total = 0
+    for item in lst:
+        total += ulen(item) if isinstance(item, list) else 1
+    return total
+
+class filesystem:
+    def __init__(self):
+        self.recursiveSteps = 0
+        self._glob = _global_err
+
+    def isExistAndFile(self, path: str) -> bool:
+        return pathlib.Path(os.path.abspath(path)).is_file()
+
+    def isExistAndDir(self, path: str) -> bool:
+        return pathlib.Path(os.path.abspath(path)).is_dir()
+
+    def rmdir(self, directory: str):
+        shutil.rmtree(directory, ignore_errors=True)
+
+    def rmEachDir(self, directories: list):
+        for d in directories:
+            self.rmdir(d)
+
+    def createFile(self, filename: str):
+        with open(filename, "wb"):
+            pass
+
+    def createEachFile(self, files: list):
+        for f in files:
+            self.createFile(f)
+
+    def mvfile(self, file: str, newdir: str):
+        if not self.isExistAndFile(file):
+            self._glob.err(f"File doesn't exists: {file}")
+        if not self.isExistAndDir(newdir):
+            self._glob.err(f"Dir doesn't exists: {newdir}")
+        shutil.move(file, newdir)
+
+    def cpyfile(self, file: str, newdir: str):
+        if not self.isExistAndFile(file):
+            self._glob.err(f"File doesn't exists: {file}")
+        if not self.isExistAndDir(newdir):
+            self._glob.err(f"Dir doesn't exists: {newdir}")
+        shutil.copy(file, newdir)
+
+    def _mode_write(self, mode: str, files: list, tdata: list):
+        if not cmpLLen(files, tdata):
+            self._glob.err(f"List length doesn't match: lst1: {len(files)}, lst2: {len(tdata)}")
+        for path, data in zip(files, tdata):
+            if mode == "ab":
+                self.appendToFile(path, data)
+            elif mode == "wb":
+                self.writeToFile(path, data)
+
+    def appendToFile(self, filename: str, content):
+        if not self.isExistAndFile(filename):
+            self._glob.err(f"File doesn't exists: {filename}")
+        if not isinstance(content, (bytes, bytearray)):
+            content = str(content).encode("utf-8")
+        with open(filename, "ab") as f:
+            f.write(content)
+
+    def appendEachFile(self, files: list, tdata: list):
+        self._mode_write("ab", files, tdata)
+
+    def writeToFile(self, filename: str, content):
+        if not self.isExistAndFile(filename):
+            self._glob.err(f"File doesn't exists: {filename}")
+        if not isinstance(content, (bytes, bytearray)):
+            content = str(content).encode("utf-8")
+        with open(filename, "wb") as f:
+            f.write(content)
+
+    def writeEachFile(self, files: list, tdata: list):
+        self._mode_write("wb", files, tdata)
+
+    def readFromFile(self, filename: str) -> bytes:
+        if not self.isExistAndFile(filename):
+            self._glob.err(f"File doesn't exists: {filename}")
+        with open(filename, "rb") as f:
+            return f.read()
+
+    def readEachFile(self, files: list) -> list[bytes]:
+        return [self.readFromFile(f) for f in files]
+
+    def filebufferlen(self, filename: str) -> int:
+        return ulen([self.readFromFile(filename)])
+
+    def mfilesbufferlen(self, filesNames: list) -> int:
+        return ulen(self.readEachFile(filesNames))
+
+    def dirbufferlen(self, directory: str) -> int:
+        if not self.isExistAndDir(directory):
+            self._glob.err(f"Dir doesn't exists: {directory}")
+        return ulen(self.dirlist(directory))
+
+    def dirlist(self, directory: str) -> list[str]:
+        if not self.isExistAndDir(directory):
+            self._glob.err(f"Dir doesn't exists: {directory}")
+        full = []
+        for dp, dn, fn in os.walk(directory):
+            full.extend(os.path.join(dp, name) for name in dn + fn)
+        return full
+
+    def recursiveFind(self, reserve: int = 2, fileName=None):
+        target = pathlib.Path(fileName)
+        reserved = []
+        self.recursiveSteps = 0
+        while self.recursiveSteps <= reserve:
+            if self.recursiveSteps == 0:
+                expanded = target
+            else:
+                expanded = pathlib.Path("../" * self.recursiveSteps) / target
+            reserved.append(expanded)
+            if expanded.is_file():
+                self.recursiveSteps = 0
+                return expanded
+            self.recursiveSteps += 1
+        self.recursiveSteps = 0
+        self._glob.err(f"Reserved file paths don't exist: {reserved}")
+
+fs = filesystem()
 
 class clock:
     def __init__(self, stamp=None):
         self.stamp = stamp
-        self.logRate = {
-            "newborn": 86400,
-            "normal": 360000,
-            "ancient": 13234342342
-        }
-        self._egg_global = AGC_GLOBAL()
-        self._fs = filesystem()
+        self.logRate = {"newborn": 86400, "normal": 360000, "ancient": 13234342342}
+        self._egg_global = _global_err
+        self._fs = fs
 
-    def integerDate(self):
+    def integerDate(self) -> int:
         return int(datetime.datetime.now().timestamp())
 
-    def _isFar(self, t, override=None):
+    def _isFar(self, t: int, override=None) -> bool:
         threshold = self.stamp if override is None else override
         return (self.integerDate() - t) > threshold
 
-    def _filetime(self, fn):
+    def _filetime(self, fn: str) -> int:
         if not self._fs.isExistAndFile(fn):
             self._egg_global.err(f"File doesn't exist: {fn}")
             sys.exit(0)
         return int(os.path.getmtime(fn))
 
-    def _ancient_log(self, fn, suffixes, threshold=None):
+    def _ancient_log(self, fn: str, suffixes: list|tuple, threshold=None) -> bool:
         if not self._fs.isExistAndFile(fn):
             self._egg_global.err(f"File doesn't exist: {fn}")
             sys.exit(0)
-
         p = pathlib.Path(fn)
         if p.suffix not in suffixes:
             return False
-        return self._isFar(self._filetime(str(p)), override=threshold)
+        file_ts = self._filetime(str(p))
+        return self._isFar(file_ts, override=threshold)
 
-    def clean_directory(self, directory, suffixes, rate="normal"):
+    def clean_directory(self, directory: str, suffixes: list|tuple, rate: str = "normal"):
         if rate not in self.logRate:
             self._egg_global.err(f"Invalid rate '{rate}', must be one of: {list(self.logRate.keys())}")
             sys.exit(1)
-
         age_limit = self.logRate[rate]
         if not self._fs.isExistAndDir(directory):
             self._egg_global.err(f"Directory doesn't exist: {directory}")
             sys.exit(0)
-
         dirpath = pathlib.Path(directory)
-        deleted = 0
-        scanned = 0
-
+        deleted = scanned = 0
         for file in dirpath.iterdir():
             if not file.is_file():
                 continue
@@ -69,244 +280,113 @@ class clock:
                     self._egg_global.ok(f"Deleted old log: {abs_path}")
                 except Exception as e:
                     self._egg_global.err(f"Error deleting {abs_path}: {e}")
-
         return {"scanned": scanned, "deleted": deleted}
 
-
-import colorama
-
-FBLACK, FRED, FGREEN, FYELLOW, FBLUE, FMAGENTA, FCYAN, FWHITE, FRESET = (
-    colorama.Fore.BLACK, colorama.Fore.RED, colorama.Fore.GREEN,
-    colorama.Fore.YELLOW, colorama.Fore.BLUE, colorama.Fore.MAGENTA,
-    colorama.Fore.CYAN, colorama.Fore.WHITE, colorama.Fore.RESET
-)
-
-FBRIGHTBLACK, FBRIGHTRED, FBRIGHTGREEN, FBRIGHTYELLOW, FBRIGHTBLUE, FBRIGHTMAGENTA, FBRIGHTCYAN, FBRIGHTWHITE = (
-    colorama.Fore.LIGHTBLACK_EX, colorama.Fore.LIGHTRED_EX, colorama.Fore.LIGHTGREEN_EX,
-    colorama.Fore.LIGHTYELLOW_EX, colorama.Fore.LIGHTBLUE_EX, colorama.Fore.LIGHTMAGENTA_EX,
-    colorama.Fore.LIGHTCYAN_EX, colorama.Fore.LIGHTWHITE_EX
-)
-
-BBLACK, BRED, BGREEN, BYELLOW, BBLUE, BMAGENTA, BCYAN, BWHITE, BRESET = (
-    colorama.Back.BLACK, colorama.Back.RED, colorama.Back.GREEN,
-    colorama.Back.YELLOW, colorama.Back.BLUE, colorama.Back.MAGENTA,
-    colorama.Back.CYAN, colorama.Back.WHITE, colorama.Back.RESET
-)
-
-BBRIGHTBLACK, BBRIGHTRED, BBRIGHTGREEN, BBRIGHTYELLOW, BBRIGHTBLUE, BBRIGHTMAGENTA, BBRIGHTCYAN, BBRIGHTWHITE = (
-    colorama.Back.LIGHTBLACK_EX, colorama.Back.LIGHTRED_EX, colorama.Back.LIGHTGREEN_EX,
-    colorama.Back.LIGHTYELLOW_EX, colorama.Back.LIGHTBLUE_EX, colorama.Back.LIGHTMAGENTA_EX,
-    colorama.Back.LIGHTCYAN_EX, colorama.Back.LIGHTWHITE_EX
-)
-
-STYLEBRIGHT = colorama.Style.BRIGHT
-STYLEDIM = colorama.Style.DIM
-STYLERESET = colorama.Style.RESET_ALL
-
-def encodeChar(char):
+def encodeChar(char: str) -> int:
     return ord(char)
 
-def encodeStr(string):
+def encodeStr(string: str) -> int:
     string = string.strip()
-    final = 0
-    for char in string:
-        final += encodeChar(char)
-    return final
+    total = 0
+    for c in string:
+        total += encodeChar(c)
+    return total
 
-def encodeStrReversible(s):
-    return s.encode("utf-8")
+def encodeStrReversible(s: str) -> bytes:
+    return s.encode('utf-8')
 
-def decodeStrReversible(b):
-    return b.decode("utf-8")
+def decodeStrReversible(b: bytes) -> str:
+    return b.decode('utf-8')
 
-def encodeStrToInt(s):
+def encodeStrToInt(s: str) -> int:
     result = 0
     for c in s:
         result = (result << 16) | ord(c)
     return result
 
-def decodeIntToStr(n):
+def decodeIntToStr(n: int) -> str:
     chars = []
     while n > 0:
         chars.append(chr(n & 0xFFFF))
         n >>= 16
-    return "".join(reversed(chars))
+    return ''.join(reversed(chars))
 
 def encodeFixed8(s: str) -> int:
-    b = s.encode("utf-8")[:8].ljust(8, b"\x00")
+    b = s.encode("utf-8")[:8].ljust(8, b'\x00')
     return int.from_bytes(b, "little")
 
 def decodeFixed8(n: int) -> str:
     b = n.to_bytes(8, "little")
-    return b.rstrip(b"\x00").decode("utf-8")
+    return b.rstrip(b'\x00').decode("utf-8")
 
-import shutil
-
-class filesystem:
-    def __init__(self):
-        self.recursiveSteps = 0
-        self._glob = AGC_GLOBAL()
-
-    def isExistAndFile(self, path): return pathlib.Path(os.path.abspath(path)).is_file()
-    def isExistAndDir(self, path): return pathlib.Path(os.path.abspath(path)).is_dir()
-
-    def createFile(self, filename):
-        with open(filename, "w") as f:
-            f.write("")
-
-    def writeToFile(self, filename, content):
-        if not self.isExistAndFile(filename):
-            self._glob.err(f"File doesn't exists: {filename}")
-        if not isinstance(content, bytes):
-            content = content.encode("utf-8")
-        with open(filename, "wb") as f:
-            f.write(content)
-
-    def readFromFile(self, filename):
-        if not self.isExistAndFile(filename):
-            self._glob.err(f"File doesn't exists: {filename}")
-        with open(filename, "rb") as f:
-            return f.read()
-
-    def appendToFile(self, filename, content):
-        if not self.isExistAndFile(filename):
-            self._glob.err(f"File doesn't exists: {filename}")
-        if not isinstance(content, bytes):
-            content = content.encode("utf-8")
-        with open(filename, "ab") as f:
-            f.write(content)
-
-    def rmdir(self, directory):
-        shutil.rmtree(directory, True)
-
-class AGC_GLOBAL:
-    def __init__(self):
-        pass
-
-    def err(self, msg, raiseException=True):
-        if not raiseException:
-            print(f"{colorama.Fore.RED}[ FATAL ]: [ GLOBAL ]: {msg}{colorama.Fore.RESET}")
-            sys.exit(1)
-        raise RuntimeError(f"{colorama.Fore.RED}[ FATAL ]: [ GLOBAL ]: {msg}{colorama.Fore.RESET}")
-
-    def ok(self, msg):
-        print(f"{colorama.Fore.GREEN}[ OK ]: {msg}{colorama.Fore.RESET}")
-
-_fs = filesystem()
-
-def __glue__(filenames: list[str]) -> str:
+def __glue__(filenames: List[str]) -> str:
     parts = []
     script_dir = os.path.dirname(os.path.abspath(__file__))
     for fp in filenames:
         abs_fp = os.path.join(script_dir, fp)
-        if _fs.isExistAndFile(abs_fp):
-            content = _fs.readFromFile(abs_fp).decode("utf-8", errors="replace")
+        if fs.isExistAndFile(abs_fp):
+            content = fs.readFromFile(abs_fp).decode("utf-8", errors="replace")
             parts.append(f"# src file: {abs_fp}\n{content}")
     return "\n\n".join(parts)
 
 def __glue__package__(filenames, output="bundled.py"):
-    _fs.createFile(output)
+    fs.createFile(output)
     data = __glue__(filenames)
     out_dir = os.path.dirname(os.path.abspath(output))
-    if out_dir and not _fs.isExistAndDir(out_dir):
+    if out_dir and not fs.isExistAndDir(out_dir):
         os.makedirs(out_dir, exist_ok=True)
-    _fs.writeToFile(output, data.encode("utf-8"))
+    fs.writeToFile(output, data.encode("utf-8"))
 
 class IndexableTool:
-    def __init__(self):
-        pass
-
     def get_last_occurrence(self, obj: list | str, occurrence):
         try:
             return obj.rindex(occurrence)
         except ValueError:
             return None
 
-def get_flag_value(lst, flag):
-    if flag not in lst:
-        return None
-    idx = lst.index(flag)
-    if idx + 1 >= len(lst):
-        _instance = AGC_GLOBAL()
-        _instance.err(f"Flag '{flag}' requires a value.")
-        return None
-    return lst[idx + 1]
-
-def clear_empty_gap(lst: list):
-    return [x for x in lst if x]
-
-def cmpList(lst1: list, lst2: list):
-    if not lst1 or not lst2: return True
-    if len(lst1) != len(lst2): return False
-    return True
-
-def cmpLLen(lst1: list, lst2: list):
-    return len(lst1) == len(lst2)
-
-def ulen(lst: list):
-    fullIndex = 0
-    for each in lst:
-        if isinstance(each, list):
-            fullIndex += ulen(each)
-        fullIndex += 1
-    return fullIndex
-
 class pAst_if:
-    def __init__(self, con):
+    def __init__(self, con: str):
         self.context = con
 
-def bind2func(func, func2):
-    func()
-    func2()
-
 def doFuncWhenIfMatch(functions: list, statements: list[pAst_if]):
-    agc_init = AGC_GLOBAL()
     if not cmpList(functions, statements):
-        agc_init.err(f"Functions and statement cmp list return false")
+        _global_err.err("Functions and statement cmp list return false")
     for i, each in enumerate(functions):
         if bool(eval(statements[i].context)):
             each()
 
-import re
-
-def checkInstance(string, unallowedChars: list | str = None):
-    if not unallowedChars:
+def checkInstance(string: str, unallowedChars: str | list | None = None) -> bool:
+    if unallowedChars is None:
         unallowedChars = "`~!@#$%^&*()-=_+}{[]:;'\"\\|<>?/.,"
-    if unallowedChars in string:
-        return True
-    return False
+    return any(c in unallowedChars for c in string)
 
-def isInteger(inputI: str):
+def isInteger(inputI: str) -> bool:
     try:
         int(inputI)
         return True
     except ValueError:
         return False
 
-def isFloat(inputF: str):
+def isFloat(inputF: str) -> bool:
     try:
         float(inputF)
         return not isInteger(inputF)
     except ValueError:
         return False
 
-def isString(s):
-    return isinstance(s, str) and ((s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'")))
+def isString(s) -> bool:
+    return isinstance(s, str) and (
+        (s.startswith('"') and s.endswith('"')) or
+        (s.startswith("'") and s.endswith("'"))
+    )
 
-def isChar(inputC):
-    return isString(inputC) and len(inputC) == 1
+def isChar(inputC) -> bool:
+    return isString(inputC) and len(inputC) == 3
 
-def isBool(inputB):
-    return inputB.strip().lower() in ("true", "false")
+def isBool(inputB: str) -> bool:
+    return inputB.strip() in ["false", "true", "True", "False"]
 
-def isArray(inputl):
-    try:
-        list(inputl)
-        return True
-    except ValueError:
-        return False
-
-def split_arg(string):
+def split_arg(string: str):
     pattern = r'''((?:[^,"'()\[\]]+|"[^"]*"|'[^']*'|\([^\(\)]*\)|\[[^\[\]]*\])+)'''
     return [a.strip() for a in re.findall(pattern, string.strip(), re.VERBOSE)]
 
@@ -349,13 +429,7 @@ class StringTool:
             db_parts.append(f"'{s[i]}'")
             i += 1
         db_parts.append('0')
-        return f"{name} db " + ", ".join(db_parts)
-
-    def _string_split(self, splits, t=1):
-        if t == 1:
-            return [self.string.split(each) for each in splits]
-        elif t == 2:
-            return {each: self.string.split(each) for each in splits}
+        return f"{name} db " + ", ".join(db_parts) + ", 0"
 
     def _is_bool(self):
         return self.string.lower() in ("true", "false")
@@ -368,24 +442,16 @@ class StringTool:
             return False
 
     def _is_float(self):
-        return not self._is_int() and self._string_can_float()
-
-    def _string_can_float(self):
+        if self._is_int():
+            return False
         try:
             float(self.string)
             return True
-        except ValueError:
+        except Exception:
             return False
 
     def _is_pure_string(self):
-        return (self.string.startswith('"') and self.string.endswith('"')) or (self.string.startswith("'") and self.string.endswith("'"))
-
-    def _retend(self, endstring=""):
-        return self.string + endstring
-
-    def _truncate(self, length, trailings="..."):
-        return self.string[:length] + trailings if len(self.string) > length else self.string
-
-    def _language_safe(self):
-        return self.string.replace("\"", "\\\"").replace("\'", "\\'")
-
+        return (
+            (self.string.startswith('"') and self.string.endswith('"')) or
+            (self.string.startswith("'") and self.string.endswith("'"))
+        )
